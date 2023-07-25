@@ -1,0 +1,719 @@
+---
+title: "Code"
+author: "Marie Lubineau"
+date: "2023-07-18"
+output: html_document
+---
+
+#USEFUL LIBRARIES
+```{r}
+library(dplyr)
+library(lme4)
+library(afex)
+library(ggplot2)
+library(BayesFactor)
+```
+
+#STYLE FOR THE GRAPHS
+```{r}
+theme_set(
+  theme_classic() +
+    theme(legend.position = "top")
+  )
+```
+
+
+#EXPERIMENT 1 - 2
+## Data loading
+```{r}
+data_1 <- read.csv("experiment_1_1.csv") #For experiment 1 - with adults skilled readers
+data_2 <- read.csv("experiment_1_2.csv") #For experiment 1 - with adults skilled readers
+data <- rbind(data_1, data_2) #For experiment 1 - with adults skilled readers
+#data <- read.csv("experiment_2.csv") #For exepriment 2 - with dyslexic children
+```
+
+## Dataset construction 
+### For response time analysis
+```{r}
+data_RT <- data%>%
+  filter(accuracy==1)%>%         #remove error trials
+  filter(rt>200)%>%              #only keep rts higher than 200ms
+  #mutate each variable into a factor or a numeric
+  mutate(display_condition=factor(display_condition, levels=c('0.01', '10', '15'), labels=c('continu', "10Hz", "15Hz")),                
+         length=as.numeric(length),
+         lexicality=factor(lexicality, levels=c('word','pseudoword'), labels=c('words', 'pseudowords')),
+         cohorte=as.factor(cohorte),
+         word_freq=factor(word_freq, levels=c('4', '3', '2', '1'), labels=c('Very frequent', 'Frequent', 'Rare', 'Very rare')),
+         pseudoword_type=as.factor(pseudoword_type),
+         ID=as.factor(ID),
+         stimulus=as.factor(stimulus))
+```
+
+### For error rate analysis
+```{r}
+data_ER <- data%>%
+  filter(rt>200)%>%              #only keep rts higher than 200ms
+  #mutate each variable into a factor or a numeric
+  mutate(display_condition=factor(display_condition, levels=c('0.01', '10', '15'), labels=c('continu', "10Hz", "15Hz")),                
+         length=as.numeric(length),
+         lexicality=factor(lexicality, levels=c('word','pseudoword'), labels=c('words', 'pseudowords')),
+         cohorte=as.factor(cohorte),
+         word_freq=factor(word_freq, levels=c('4', '3', '2', '1'), labels=c('Very frequent', 'Frequent', 'Rare', 'Very rare')),
+         pseudoword_type=as.factor(pseudoword_type),
+         ID=as.factor(ID),
+         stimulus=as.factor(stimulus),
+  #create a new variable to know wich item are incorrect
+         incorrect=1-accuracy)
+```
+
+## Plots
+Define the colors for the graphs
+```{r}
+colors <- c('#264f82',"#5a95c2", "#93c46d")
+```
+
+### Length x lexicality
+```{r fig.height = 4.5, fig.width = 6}
+#data_RT%>%    #For response time
+data_ER%>%    #For error rate
+  filter(cohorte=="adults")%>%                   #For experiment 1
+  #filter(cohorte=="dyslexic_children")%>%       #For experiment 2
+
+    #Aggregation of the data per participant
+  group_by(ID, lexicality, length, display_condition)%>%
+  summarise(
+    #mean_per_participant=mean(rt)             #For response time
+    mean_per_participant=mean(incorrect)      #For error rate
+  )%>%
+    #Aggregation of the data for each cell of the design
+  group_by(lexicality, length, display_condition)%>%
+  summarise(
+    mean_per_condition=mean(mean_per_participant),
+    std_error_of_the_mean_per_cond=sd(mean_per_participant)/sqrt(n())
+  )%>%
+  ggplot(aes(x=length, 
+             y=mean_per_condition, 
+             ymin=mean_per_condition-std_error_of_the_mean_per_cond, 
+             ymax=mean_per_condition+std_error_of_the_mean_per_cond, 
+             group=display_condition))+
+  facet_grid(as.formula(paste(".~ ","lexicality"))) +
+  geom_linerange()+
+  geom_point(aes(color = display_condition, group=display_condition), size=4)+
+  geom_smooth(method="lm", se = FALSE, aes(color=display_condition, group=display_condition), size=1.5)+
+  scale_color_manual(values = rev(colors))+
+  scale_fill_manual(values = rev(colors))+
+  theme(axis.text.x = element_text(size=30),
+      axis.text.y = element_text(size=30))
+  
+  
+```
+### Word frequency
+```{r fig.height = 4.5, fig.width = 3}
+#data_RT%>%    #For response time
+data_ER%>%    #For error rate
+  filter(cohorte=="adults")%>%                   #For experiment 1
+  #filter(cohorte=="dyslexic_children")%>%       #For experiment 2
+  
+  filter(lexicality=="words")%>% 
+  group_by(ID, word_freq, display_condition)%>%
+  summarise(
+    #mean_per_participant=mean(rt)             #For response time
+    mean_per_participant=mean(incorrect)      #For error rate
+  )%>%
+    #Agregation of the data for each cell of the design
+  group_by(word_freq, display_condition)%>%
+  summarise(
+    mean_per_condition=mean(mean_per_participant),
+    std_error_of_the_mean_per_cond=sd(mean_per_participant)/sqrt(n())
+  )%>%
+  mutate(word_freq=as.numeric(word_freq))%>%
+  ggplot(aes(x=word_freq, 
+             y=mean_per_condition,
+             ymin=mean_per_condition-std_error_of_the_mean_per_cond,
+             ymax=mean_per_condition+std_error_of_the_mean_per_cond, 
+             group=display_condition))+
+  geom_linerange()+
+  geom_point(aes(color = display_condition, group=display_condition), size=4)+
+  geom_smooth(method="lm", se = FALSE, aes(color=display_condition, group=display_condition), size=1.5)+
+  scale_color_manual(values = rev(colors))+
+  scale_fill_manual(values = rev(colors))+
+  theme(axis.text.x = element_text(size=30),
+      axis.text.y = element_text(size=30))
+```
+#### Pseudoword type
+```{r fig.height = 4.5, fig.width = 3}
+#data_RT%>%    #For response time
+data_ER%>%    #For error rate
+  filter(cohorte=="adults")%>%                   #For experiment 1
+  #filter(cohorte=="dyslexic_children")%>%       #For experiment 2
+  
+  filter(lexicality=="pseudowords")%>% 
+  group_by(ID, pseudoword_type, display_condition)%>%
+  summarise(
+    #mean_per_participant=mean(rt)             #For response time
+    mean_per_participant=mean(incorrect)      #For error rate
+  )%>%
+    #Agregation of the data for each cell of the design
+  group_by(pseudoword_type, display_condition)%>%
+  summarise(
+    mean_per_condition=mean(mean_per_participant),
+    std_error_of_the_mean_per_cond=sd(mean_per_participant)/sqrt(n())
+  )%>%
+  mutate(type = factor(pseudoword_type, levels=c("4", "3", "1", "2", "5", "6"), labels=c('ortho', 'approx', 'transpo', 'double_sub', 'mirror', 'single_sub')))%>%
+  ggplot(aes(x=type, 
+             y=mean_per_condition, 
+             ymin=mean_per_condition-std_error_of_the_mean_per_cond,
+             ymax=mean_per_condition+std_error_of_the_mean_per_cond,
+             group=display_condition))+
+  geom_linerange()+
+  geom_point(aes(color=display_condition, group=display_condition), size=4)+
+  geom_line(aes(color=display_condition, group=display_condition),size=1.5)+
+  #geom_smooth(method="lm", se = FALSE, aes(color=condition, group=condition), size=1.5)+
+  #scale_y_continuous(breaks=seq(0,0.5,by=0.1), labels=seq(0,50,by=10), limits=c(0,0.5))+
+  #scale_x_continuous(breaks=seq(-2,2,by=1), labels=seq(4,8,by=1), limits=c(-2,2))+
+  
+  
+  scale_color_manual(values = rev(colors))+
+  scale_fill_manual(values = rev(colors))+
+  theme(axis.text.x = element_text(size=20, angle =45),
+      axis.text.y = element_text(size=30))
+  
+  
+```
+
+## Model
+### Frequentist analysis
+#### For response time
+```{r}
+model <- mixed(#rt~length*lexicality*display_condition+(1|ID)+(1|stimulus), #For length x lexicality analysis
+               #rt~word_freq*display_condition+(1|ID)+(1|stimulus), #For word frequency analysis
+               rt~pseudoword_type*display_condition+(1|ID)+(1|stimulus), #For pseudoword type analysis
+               
+               data=data_RT%>%
+                 filter(cohorte=='adults')%>%                #For experiment 1
+                 #filter(cohorte=='dyslexic_children')%>%    #For experiment 2
+                 
+                 #filter(lexicality=="words")%>%        #For word frequency analysis
+                 filter(lexicality=="pseudowords")%>% #For pseudoword type analysis
+                 filter(pseudoword_type=="3"|pseudoword_type=="4")%>%#ortho VS approx
+                 #filter(pseudoword_type=="1"|pseudoword_type=="2")%>%#transpo VS sub
+                 #filter(pseudoword_type=="5"|pseudoword_type=="6")%>%#mirror VS sub
+                 
+                 mutate(length=scale(length, scale=F), #Variables need to be scaled
+                        word_freq=scale(as.numeric(word_freq), scale=F)
+                        ),
+               method='S')
+anova(model)
+```
+#### For error rate
+```{r}
+model2 <- mixed(#incorrect_2~length*lexicality*display_condition+(1|ID)+(1|stimulus), #For length x lexicality analysis
+               incorrect_2~word_freq*display_condition+(1|ID)+(1|stimulus), #For word frequency analysis
+               #incorrect_2~pseudoword_type*display_condition+(1|ID)+(1|stimulus), #For pseudoword type analysis
+               
+                family = binomial,
+                method='LRT',
+               
+                data= data_ER%>%
+                 filter(cohorte=='adults')%>%                #For experiment 1
+                 #filter(cohorte=='dyslexic_children')%>%    #For experiment 2
+                 
+                 filter(lexicality=="words")%>%        #For word frequency analysis
+                 #filter(lexicality=="pseudowords")%>% #For pseudoword type analysis
+                 #filter(pseudoword_type=="3"|pseudoword_type=="4")%>%#ortho VS approx
+                 #filter(pseudoword_type=="1"|pseudoword_type=="2")%>%#transpo VS sub
+                 #filter(pseudoword_type=="5"|pseudoword_type=="6")%>%#mirror VS sub
+                 
+                  mutate(length=scale(length, scale=F), #Variables need to be scaled
+                         word_freq=scale(as.numeric(word_freq), scale=F),
+                         incorrect_2=factor(incorrect, levels=c(0,1), labels=c('incorrect', 'correct'))),
+                control=glmerControl(optimizer = "bobyqa"))
+
+print(model2)
+```
+### Bayesian analysis
+#### For response time
+```{r}
+test <- generalTestBF(#rt ~ length*lexicality*display_condition + ID,    #For length x lexicality analysis
+              #rt ~ word_freq*display_condition + ID, #For word frequency analysis
+              rt ~ pseudoword_type*display_condition + ID, #For pseudoword type analysis
+              
+              data=data_RT%>%
+                 #filter(cohorte=='adults')%>%                #For experiment 1
+                 filter(cohorte=='dyslexic_children')%>%    #For experiment 2
+                 #filter(lexicality=="words")%>%        #For word frequency analysis
+                 filter(lexicality=="pseudowords")%>% #For pseudoword type analysis
+                 filter(pseudoword_type=="3"|pseudoword_type=="4")%>%#ortho VS approx
+                 #filter(pseudoword_type=="1"|pseudoword_type=="2")%>%#transpo VS sub
+                 #filter(pseudoword_type=="5"|pseudoword_type=="6")%>%#mirror VS sub
+                
+                 mutate(length=scale(length, scale=F),
+                        word_freq=scale(as.numeric(word_freq), scale=F),
+                        ), 
+             whichRandom=c("ID"),
+        whichModels = "all",
+        neverExclude=c("ID"))
+```
+For length*lexicality analysis
+```{r}
+print('Main effect of display condition')
+test[127]/test[124]
+print('Main effect of lexicality')
+test[127]/test[125]
+print('Main effect of length')
+test[127]/test[126]
+print('lexicality*display condition')
+test[127]/test[121]
+print('display condition * length')
+test[127]/test[122]
+print('length*lexicality')
+test[127]/test[123]
+print('length*lexicality*display_condition')
+test[127]/test[120]
+```
+For word frequency analysis
+```{r}
+print('Main effect of display condition')
+test[7]/test[5]
+print('Main effect of word frequency')
+test[7]/test[6]
+print('word frequency*display condition')
+test[7]/test[4]
+```
+
+For pseudoword type analysis
+```{r}
+print('Main effect of display condition')
+test[7]/test[5]
+print('Main effect of pseudoword type')
+test[7]/test[6]
+print('pseudoword type*display condition')
+test[7]/test[4]
+```
+
+#### For error rate
+```{r}
+test <- generalTestBF(#incorrect ~ length*lexicality*display_condition + ID,    #For length x lexicality analysis
+              #incorrect ~ word_freq*display_condition + ID, #For word frequency analysis
+              incorrect ~ pseudoword_type*display_condition + ID, #For pseudoword type analysis
+              
+              data=data_ER%>%
+                 #filter(cohorte=='adults')%>%                #For experiment 1
+                 filter(cohorte=='dyslexic_children')%>%    #For experiment 2
+                 #filter(lexicality=="words")%>%        #For word frequency analysis
+                 filter(lexicality=="pseudowords")%>% #For pseudoword type analysis
+                 filter(pseudoword_type=="3"|pseudoword_type=="4")%>%#ortho VS approx
+                 #filter(pseudoword_type=="1"|pseudoword_type=="2")%>%#transpo VS sub
+                 #filter(pseudoword_type=="5"|pseudoword_type=="6")%>%#mirror VS sub
+                
+                 mutate(length=scale(length, scale=F),
+                        word_freq=scale(as.numeric(word_freq), scale=F),
+                        
+                        ), 
+             whichRandom=c("ID"),
+        whichModels = "all",
+        neverExclude=c("ID"))
+```
+For length*lexicality analysis
+```{r}
+print('Main effect of display condition')
+test[127]/test[124]
+print('Main effect of lexicality')
+test[127]/test[125]
+print('Main effect of length')
+test[127]/test[126]
+print('lexicality*display condition')
+test[127]/test[121]
+print('display condition * length')
+test[127]/test[122]
+print('length*lexicality')
+test[127]/test[123]
+print('length*lexicality*display_condition')
+test[127]/test[120]
+```
+For word frequency analysis
+```{r}
+print('Main effect of display condition')
+test[7]/test[5]
+print('Main effect of word frequency')
+test[7]/test[6]
+print('word frequency*display condition')
+test[7]/test[4]
+```
+
+For pseudoword type analysis
+```{r}
+print('Main effect of display condition')
+test[7]/test[5]
+print('Main effect of pseudoword type')
+test[7]/test[6]
+print('pseudoword type*display condition')
+test[7]/test[4]
+```
+# EXPERIMENT 3
+## Data loading
+```{r}
+data <- read.csv("experiment_3.csv")
+data_mirror <- read.csv("experiment_3_mirror.csv")
+```
+
+## Plots
+```{r}
+colors <- c("#d48400",  "#bf3b41","#416100", "#bf3b41", "#416100")
+```
+
+### Letter naming
+```{r fig.width=4, fig.height=6, echo=FALSE}
+data %>%
+  filter(test=="letters")%>%
+ ggplot()+
+    geom_violin(trim = TRUE, aes(x=condition, y=nb_correct_per_minute, fill=condition), color=NA) +
+    stat_summary(aes(x=condition, y=nb_correct_per_minute),
+      fun.data = "mean_se",  fun.args = list(mult = 1), 
+      geom = "errorbar", size=0.5, width=0.2)+
+    stat_summary(aes(x=condition, y=nb_correct_per_minute, color=condition),
+      fun.data = "mean_se",  fun.args = list(mult = 1), 
+      geom = "point", size=5)+
+  geom_hline(yintercept=73.31457, linetype="dotted", size=1)+#horizontal line with the mean of the daylight condition
+      theme(axis.text.x= element_text(size=20, angle=45),
+        axis.text.y= element_text(size=25))+
+   scale_color_manual(values = colors)+
+  scale_fill_manual(values = alpha(colors, 0.15))+
+  scale_y_continuous(breaks=seq(0,160,by=50), labels=seq(0,160,by=50), limits=c(0,160))
+
+```
+### Words reading
+```{r fig.width=4, fig.height=6, echo=FALSE}
+data %>%
+  filter(test=="words")%>%
+  mutate(condition=factor(condition, levels=c("daylight", "lamp_OFF", "lamp_ON", "glasses_OFF", "glasses_ON")))%>%
+  ggplot()+
+  geom_violin(trim = TRUE, aes(x=condition, y=nb_correct_per_minute, fill=condition), color=NA) +
+    stat_summary(aes(x=condition, y=nb_correct_per_minute),
+      fun.data = "mean_se",  fun.args = list(mult = 1), 
+      geom = "errorbar", size=0.5, width=0.2)+
+    stat_summary(aes(x=condition, y=nb_correct_per_minute, color=condition),
+      fun.data = "mean_se",  fun.args = list(mult = 1), 
+      geom = "point", size=5)+
+   geom_hline(yintercept=32.93387, linetype="dotted", size=1)+ #horizontal line with the mean of the daylight condition
+      theme(axis.text.x= element_text(size=20, angle=45),
+        axis.text.y= element_text(size=25))+
+     scale_color_manual(values = colors)+
+  scale_fill_manual(values = alpha(colors, 0.15))+
+  scale_y_continuous(breaks=seq(0,60,by=20), labels=seq(0,60,by=20), limits=c(0,70))
+```
+
+### Words reading - mirror
+We first design a dataset for the horizontal lines
+```{r}
+data_hline <- data.frame(category = unique(data_mirror$category),  # Create data for lines
+                         hline = c(22.82197	,16.28788	,19.50758))
+data_hline <- data_hline%>%
+  mutate(category = factor(category, levels=c("visual", "mirror", "phono")))
+
+data_hline
+```
+```{r fig.width=10, fig.height=8, echo=FALSE}
+data_mirror %>%
+  group_by(ID, condition, category)%>%
+  summarise(
+    error_rate =sum(1-accuracy)/n()*100
+  )%>%
+  mutate(category = factor(category, levels=c("visual", "mirror", "phono")))%>%
+  mutate(condition=factor(condition, levels=c("daylight", "lamp_OFF", "lamp_ON", "glasses_OFF", "glasses_ON")))%>%
+  ggplot()+
+  facet_grid(as.formula(paste(".~ ","category")))+
+    geom_violin(trim = TRUE, aes(x=condition, y=error_rate, fill=condition), color=NA) +
+    stat_summary(aes(x=condition, y=error_rate),
+      fun.data = "mean_se",  fun.args = list(mult = 1), 
+      geom = "errorbar", size=0.5, width=0.2)+
+    stat_summary(aes(x=condition, y=error_rate, color=condition),
+      fun.data = "mean_se",  fun.args = list(mult = 1), 
+      geom = "point", size=5)+
+  geom_hline(data = data_hline,
+             aes(yintercept = hline), linetype="dotted", size=1)+
+      theme(axis.text.x= element_text(size=20, angle=45),
+        axis.text.y= element_text(size=25))+
+     scale_color_manual(values = colors)+
+  scale_fill_manual(values = alpha(colors, 0.15))+
+  scale_y_continuous(breaks=seq(0,60,by=20), labels=seq(0,60,by=20), limits=c(0,70))
+```
+
+### Text reading 
+
+
+```{r fig.width=4, fig.height=6, echo=FALSE}
+data %>%
+  filter(test=="texte")%>%
+  mutate(condition=factor(condition, levels=c("daylight", "lamp_OFF", "lamp_ON", "glasses_OFF", "glasses_ON")))%>%
+  ggplot()+
+    geom_violin(trim = TRUE, aes(x=condition, y=nb_correct_per_minute, fill=condition), color=NA) +
+
+  stat_summary(aes(x=condition, y=nb_correct_per_minute),
+      fun.data = "mean_se",  fun.args = list(mult = 1), 
+      geom = "errorbar", size=0.5, width=0.2)+
+      stat_summary(aes(x=condition, y=nb_correct_per_minute, color=condition),
+      fun.data = "mean_se",  fun.args = list(mult = 1), 
+      geom = "point", size=5)+
+  geom_hline(yintercept=65.00865, linetype="dotted", size=1)+
+      theme(axis.text.x= element_text(size=25, angle=0),
+        axis.text.y= element_text(size=25))+
+       scale_color_manual(values = colors)+
+  scale_fill_manual(values = alpha(colors, 0.15))+
+  scale_y_continuous(breaks=seq(0,150,by=50), labels=seq(0,150,by=50), limits=c(0,150))
+
+```
+
+## Model
+### Frequentist analysis
+```{r}
+data%>%
+  filter(test=="letters")%>%        #For letter naming
+  #filter(test=="words")%>%          #For words reading
+  #filter(test=="texte")%>%          #For text reading
+  mutate(
+    order=scale(as.numeric(order), scale=FALSE)
+    )%>%
+  mixed(nb_correct_per_minute ~  order + condition + (1|ID), data =.)
+```
+Model for mirror analysis
+```{r}
+data_mirror %>%
+  group_by(ID, condition, category, order)%>%
+  summarise(
+    error_rate =sum(1-accuracy)/n()*100
+  )%>%
+  ungroup()%>%
+  mutate(
+    order=scale(as.numeric(order), scale=FALSE)
+    )%>%
+   mixed(error_rate ~  order + condition*category + (1|ID), data =.)
+```
+###Bayesian analysis
+```{r}
+test <- generalTestBF(nb_correct_per_minute ~  order + condition + ID, 
+data= data%>%
+  filter(test=="texte")%>%
+  mutate(
+    order=scale(as.numeric(order), scale=FALSE),
+    ID=as.factor(ID)
+    ), 
+             whichRandom=c("ID"),
+        whichModels = "all",
+        neverExclude=c("ID"))
+```
+
+```{r}
+print("Effect of order")
+test[3]/test[2]
+print("Effect of condition")
+test[3]/test[1]
+```
+# EXPERIMENT 4
+## Data loading
+```{r}
+data_words_reading <- read.csv("experiment_4_words_reading.csv")
+data_text_reading <- read.csv("experiment_4_text_reading.csv")
+data_reading_comprehension <- read.csv("experiment_4_reading_comprehension.csv")
+```
+
+## Plots
+```{r}
+colors <- c("#bf3b41","#416100")
+```
+
+### Words reading
+
+```{r fig.height = 4, fig.width = 3}
+data_words_reading%>%
+  #filter(accuracy==1)%>%  #we only want RT on correct answers for response time graphs
+  filter(ID=="FAP" & reading_time<=716.9792+3*334.0475 | ID=="CT" & reading_time<=466.8403+3*291.8499)%>% #we excluded trials away from the subject mean +/- 3sd
+  group_by(objective, subjective, ID)%>%
+  summarise(#For response time 
+            #mean=mean(reading_time), 
+            #sd=sd(reading_time)/sqrt(n()),
+            #For errro rate
+            mean = mean(1-accuracy),
+            variance = (mean*(1-mean))/n(), #Compute standard error of the mean for a binary variable
+            sd = sqrt(variance)
+            )%>%
+  ggplot(aes(x=objective, 
+             y=mean, 
+             color=subjective, 
+             group=interaction(subjective, ID)
+             ))+
+  geom_line(size=0.75, aes(linetype=ID))+
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width = 0.1, size=0.5, color="black")+
+  geom_point(size=5, aes(shape=subjective))+
+        theme(axis.text.x= element_text(size=20),
+        axis.text.y= element_text(size=20))+
+     scale_color_manual(values = colors)+
+  scale_fill_manual(values = colors)
+```
+### Text reading
+```{r fig.height = 4, fig.width = 3}
+data_text_reading%>%
+  filter(ID=="CT"&fluency<=151.3333+3*20.10552|ID=="FAP" & fluency<=154.0833+3*15.09079)%>%
+  group_by(ID, subjective, objective)%>%
+  summarise(#For fluency 
+            #mean=mean(fluency), 
+            #sd=sd(fluency)/sqrt(n()),
+            #For error rate
+            mean=mean(error_rate), 
+            sd=sd(error_rate)
+            )%>%
+  ggplot(aes(x=objective, 
+             y=mean, 
+             color=subjective, 
+             group=interaction(subjective, ID)))+
+  geom_line(size=0.75, aes(linetype=ID))+
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width = 0.1, size=0.5, color="black")+
+  geom_point(size=5, aes(shape=subjective))+
+ # scale_y_continuous(breaks=seq(0,0.15,by=0.05), labels=seq(0,15,by=5), limits=c(0,0.15))+
+        theme(axis.text.x= element_text(size=20),
+        axis.text.y= element_text(size=20))+
+           scale_color_manual(values = colors)+
+  scale_fill_manual(values = colors)
+```
+### Reading comprehension
+```{r fig.height = 4, fig.width = 3}
+data_reading_comprehension%>%
+  filter(accuracy==1)%>% #we only want RT on correct answers for response time graphs
+  filter(ID=="FAP"&decision_time<=2950.982+3*2663.61 |ID=="CT"&decision_time<=3942.411+3*2434.059)%>%
+  group_by(ID, subjective, objective)%>%
+  summarise(#For response time
+            mean=mean(decision_time), 
+            sd=sd(decision_time)/sqrt(n()),
+            #For error rate
+            #mean = mean(1-accuracy),
+            #variance = (mean*(1-mean))/n(),
+            #sd = sqrt(variance)
+            )%>%
+  ggplot(aes(x=objective, 
+             y=mean, 
+             color=subjective, 
+             group=interaction(subjective, ID)))+
+  geom_line(size=0.75, aes(linetype=ID))+
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width = 0.1, size=0.5, color="black")+
+  geom_point(size=5, aes(shape=subjective))+
+        theme(axis.text.x= element_text(size=20),
+        axis.text.y= element_text(size=20))+
+  scale_color_manual(values = colors)+
+  scale_fill_manual(values = colors)
+```
+## Model
+###Frequentist analysis
+#### Words reading
+```{r}
+data_words_reading %>%
+          filter(ID=="FAP")%>% #For analysis on FAP's results
+          filter(reading_time<=716.9792+3*334.0475)%>% #For analysis on FAP's results
+          #filter(ID=="CT")%>% #For analysis on CT's results
+          #filter(reading_time<=466.8403+3*291.8499)%>% #For analysis on CT's results
+
+          #filter(accuracy==1)%>% #For analysis of reading times only
+          mutate(order=scale(order, scale=FALSE))%>%
+          #anova_test(reading_time~order+objective*subjective) #For analysis on reading time
+          anova_test(accuracy~order+objective*subjective) #For analysis on error rate
+```
+#### Text reading
+```{r}
+data_text_reading %>%
+          filter(ID=="FAP")%>% #For analysis on FAP's results
+          filter(fluency<=154.0833+3*15.09079)%>% #For analysis on FAP's results
+          #filter(ID=="CT")%>% #For analysis on CT's results
+          #filter(fluency<=466.8403+3*291.8499)%>% #For analysis on CT's results
+          mutate(order=scale(order, scale=FALSE))%>%
+          #anova_test(fluency~order+objective*subjective) #for fluency analysis
+          anova_test(error_rate~order+objective*subjective) #for error rate analysis
+```
+#### Reading Comprehension
+```{r}
+data_reading_comprehension %>%
+          filter(ID=="FAP")%>% #For analysis on FAP's results
+          filter(decision_time<=2950.982+3*2663.61)%>% #For analysis on FAP's results
+          #filter(ID=="CT")%>% #For analysis on CT's results
+          #filter(decision_time<=3942.411+3*2434.059)%>% #For analysis on CT's results
+          #filter(accuracy==1)%>% #For decision time analysis only
+          mutate(order=scale(order, scale=FALSE))%>%
+          anova_test(decision_time~order+objective*subjective) #For decision time anlaysis
+          #anova_test(accuracy~order+objective*subjective)
+```
+
+### Bayesian analysis
+#### Words reading
+```{r}
+test <- generalTestBF(reading_time~order+objective*subjective, #for reading time
+                      #accuracy~order+objective*subjective, #for error rate analysis
+data = data_words_reading %>%
+          filter(ID=="FAP")%>% #For analysis on FAP's results
+          filter(reading_time<=716.9792+3*334.0475)%>% #For analysis on FAP's results
+          #filter(ID=="CT")%>% #For analysis on CT's results
+          #filter(reading_time<=466.8403+3*291.8499)%>% #For analysis on CT's results
+
+          filter(accuracy==1)%>% #For analysis of reading times only
+          mutate(order=scale(order, scale=FALSE)),
+          whichModels = "all"
+        
+)
+```
+```{r}
+print("Effect of order")
+test[15]/test[14]
+print("Effect of objective variable")
+test[15]/test[13]
+print("Effect of subjective variable")
+test[15]/test[12]
+print("objective*subjective")
+test[15]/test[11]
+```
+#### Text reading
+```{r}
+test <- generalTestBF(fluency~order+objective*subjective, #for fluency
+                      #error_rate~order+objective*subjective, #for error rate analysis
+data = data_text_reading %>%
+          filter(ID=="FAP")%>% #For analysis on FAP's results
+          filter(fluency<=154.0833+3*15.09079)%>% #For analysis on FAP's results
+          #filter(ID=="CT")%>% #For analysis on CT's results
+          #filter(fluency<=466.8403+3*291.8499)%>% #For analysis on CT's results
+          mutate(order=scale(order, scale=FALSE)),
+          whichModels = "all"
+)
+```
+
+```{r}
+print("Effect of order")
+test[15]/test[14]
+print("Effect of objective variable")
+test[15]/test[13]
+print("Effect of subjective variable")
+test[15]/test[12]
+print("objective*subjective")
+test[15]/test[11]
+```
+
+#### Reading comprehension
+```{r}
+test <- generalTestBF(decision_time~order+objective*subjective, #for fluency
+                      #accuracy~order+objective*subjective, #for error rate analysis
+data = data_reading_comprehension %>%
+          filter(ID=="FAP")%>% #For analysis on FAP's results
+          filter(decision_time<=2950.982+3*2663.61)%>% #For analysis on FAP's results
+          #filter(ID=="CT")%>% #For analysis on CT's results
+          #filter(decision_time<=3942.411+3*2434.059)%>% #For analysis on CT's results
+          filter(accuracy==1)%>% #For decision time analysis only
+          mutate(order=scale(order, scale=FALSE)),
+          whichModels = "all"
+)
+```
+
+```{r}
+print("Effect of order")
+test[15]/test[14]
+print("Effect of objective variable")
+test[15]/test[13]
+print("Effect of subjective variable")
+test[15]/test[12]
+print("objective*subjective")
+test[15]/test[11]
+```
